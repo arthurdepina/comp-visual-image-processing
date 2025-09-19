@@ -1,4 +1,4 @@
-# Computação Visual -- Processamento de Imagens
+# Computação Visual - Processamento de Imagens
 
 A modular computer vision system built in C using SDL2 for image processing.
 
@@ -28,7 +28,7 @@ make test
 ./bin/image_loader_demo
 ```
 
-## Sistema de Carregamento de Imagens
+# Parte 1: Sistema de Carregamento de Imagens
 
 A funcionalidade de carregamento de imagens é implementada como um módulo separado (`image_loader.c` e `image_loader.h`) que fornece uma API limpa para carregar e gerenciar imagens em aplicações de visão computacional.
 
@@ -163,3 +163,109 @@ void free_image_data(ImageData* image_data) {
 **Compatibilidade**: Dados podem ser facilmente convertidos para bibliotecas como OpenCV, PIL, ou processamento manual de pixels.
 
 A API é projetada para ser simples, mas robusta - carregue uma imagem com uma única chamada de função, obtenha informações detalhadas de erro se algo der errado, e acesse facilmente todas as propriedades da imagem para processamento posterior.
+
+# Parte 2: Análise e Conversão para Escala de Cinza
+
+O sistema inclui um módulo completo de análise de imagens (`image_analysis.c` e `image_analysis.h`) que fornece detecção automática de tipo de cor, conversão para escala de cinza e análise estatística para aplicações de visão computacional.
+
+### Detecção Automática de Tipo de Imagem
+
+**Classificação por Canais**: O sistema classifica automaticamente imagens baseado no número de canais:
+- **1 canal**: Escala de cinza nativa
+- **3 canais**: RGB sem transparência
+- **4 canais**: RGBA com canal alpha
+
+**Detecção Inteligente de Escala de Cinza**: Mesmo imagens armazenadas como RGB podem ser detectadas como escala de cinza se todos os pixels possuem valores R=G=B. O algoritmo verifica pixel por pixel com tolerância de ±1 para artefatos de compressão:
+
+```c
+// Verificação com tolerância para artefatos de compressão
+if (abs(r - g) > 1 || abs(g - b) > 1 || abs(r - b) > 1) {
+    is_grayscale = false;
+}
+```
+
+### Conversão para Escala de Cinza
+
+**Fórmula de Luminância**: Para imagens coloridas, utiliza-se a fórmula padrão ITU-R BT.709 que pondera os canais RGB baseado na sensibilidade do olho humano:
+
+```
+Y = 0.2125 × R + 0.7154 × G + 0.0721 × B
+```
+
+**Justificativa Técnica**:
+- **Verde (0.7154)**: Maior peso devido à alta sensibilidade do olho humano ao verde
+- **Vermelho (0.2125)**: Peso médio, segunda maior sensibilidade
+- **Azul (0.0721)**: Menor peso, menor sensibilidade ocular
+
+**Processo de Conversão**:
+1. **Análise Prévia**: Determina se conversão ou extração é necessária
+2. **Acesso Seguro aos Pixels**: Utiliza `SDL_LockSurface()` para acesso thread-safe
+3. **Cálculo de Luminância**: Aplica a fórmula com arredondamento para o inteiro mais próximo
+4. **Alocação de Memória**: Cria buffer contíguo para dados em escala de cinza
+
+### Estruturas de Dados Especializadas
+
+```c
+typedef struct {
+    Uint8* pixels;          // Buffer linear de pixels (0-255)
+    int width, height;      // Dimensões da imagem
+    size_t data_size;       // Tamanho total em bytes
+    char* source_filename;  // Arquivo fonte original
+} GrayscaleImage;
+```
+
+**Organização de Memória**: Os pixels são armazenados em formato linear (row-major order) para otimização de cache e acesso sequencial eficiente.
+
+### Análise Estatística
+
+**Métricas Calculadas**:
+- **Intensidade Média**: Média aritmética de todos os pixels, indica brilho geral
+- **Intensidade Mínima/Máxima**: Range dinâmico da imagem
+- **Contraste**: Diferença entre intensidade máxima e mínima
+
+**Algoritmo de Cálculo**:
+```c
+// Cálculo em uma única passada para eficiência
+for (size_t i = 0; i < total_pixels; i++) {
+    Uint8 pixel = grayscale_image->pixels[i];
+    sum += pixel;
+    min_intensity = (pixel < min_intensity) ? pixel : min_intensity;
+    max_intensity = (pixel > max_intensity) ? pixel : max_intensity;
+}
+avg_intensity = (double)sum / total_pixels;
+```
+
+### Persistência de Dados
+
+**Salvamento em PNG**: As imagens em escala de cinza são salvas como PNG RGB onde R=G=B para cada pixel, garantindo compatibilidade universal:
+
+```c
+// Conversão para RGB para salvamento
+row[x * 3] = gray_value;     // R
+row[x * 3 + 1] = gray_value; // G  
+row[x * 3 + 2] = gray_value; // B
+```
+
+**Geração Automática de Nomes**: Converte automaticamente nomes de arquivos:
+- `images/flowers.jpg` → `grayscale_images/flowers_gray.png`
+- Preserva o nome base e adiciona sufixo `_gray`
+
+### Acesso e Manipulação de Pixels
+
+**Acesso Seguro**: Funções `get_grayscale_pixel()` e `set_grayscale_pixel()` com verificação de limites automática:
+
+```c
+// Fórmula de acesso linear
+pixel_index = y * width + x;
+```
+
+**Verificação de Limites**: Todas as operações verificam coordenadas válidas (0 ≤ x < width, 0 ≤ y < height) para prevenir acessos inválidos à memória.
+
+### Otimizações de Performance
+
+- **Acesso Linear**: Dados organizados sequencialmente para otimização de cache
+- **Cálculo Único**: Estatísticas calculadas em uma única passada pelos dados
+- **Gerenciamento Eficiente**: Funções dedicadas para alocação e liberação de memória
+- **Conversão In-Place**: Quando possível, reutiliza estruturas existentes
+
+O módulo serve como base sólida para operações avançadas de visão computacional, fornecendo dados em escala de cinza normalizados e estatísticas essenciais para algoritmos subsequentes.
