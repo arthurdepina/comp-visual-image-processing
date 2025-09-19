@@ -1,7 +1,5 @@
 # Computação Visual - Processamento de Imagens
 
-A modular computer vision system built in C using SDL2 for image processing.
-
 ## Quick Start
 
 ### Build and Run
